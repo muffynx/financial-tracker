@@ -8,8 +8,7 @@ export default function AddTransaction() {
     amount: '',
     type: 'expense',
     category: 'อาหาร',
-    date: new Date().toISOString().split('T')[0], // วันที่เริ่มต้น
-    time: new Date().toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute: '2-digit' }), // เวลาเริ่มต้น (09:48)
+    date: new Date().toISOString().split('T')[0],
     notes: '',
   });
   const [error, setError] = useState('');
@@ -25,9 +24,10 @@ export default function AddTransaction() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [parsedData, setParsedData] = useState(null);
 
-  const categories = ['อาหาร', 'ค่าเดินทาง', 'ที่อยู่อาศัย', 'บันเทิง', 'ช้อปปิ้ง', 'สุขภาพ', 'การศึกษา', 'อื่นๆ'];
+  const categories = ['อาหาร ', 'ค่าเดินทาง', 'ที่อยู่อาศัย', 'บันเทิง', 'ช้อปปิ้ง', 'สุขภาพ', 'การศึกษา', 'อื่นๆ'];
 
   useEffect(() => {
+    // Check login status
     const token = localStorage.getItem('token');
     if (!token) {
       window.location.href = '/login';
@@ -35,6 +35,7 @@ export default function AddTransaction() {
       setIsLoggedIn(true);
     }
 
+    // Check if SpeechRecognition is supported
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recog = new SpeechRecognition();
@@ -46,6 +47,7 @@ export default function AddTransaction() {
     }
   }, []);
 
+  // Handle speech recognition
   const startRecording = () => {
     if (!recognition) return;
     setIsRecording(true);
@@ -74,23 +76,28 @@ export default function AddTransaction() {
     }
   };
 
+  // Parse transcript to form data
   const parseTranscript = (text) => {
     console.log('Transcript received:', text);
     const lowerText = text.toLowerCase();
     let newFormData = { ...formData };
 
+    // Detect amount
     const amountMatch = lowerText.match(/(\d{1,3}(,\d{3})*(\.\d+)?)/);
     if (amountMatch) {
       const rawAmount = amountMatch[0].replace(/,/g, '');
       newFormData.amount = rawAmount;
+      console.log('Parsed amount:', rawAmount);
     }
 
+    // Detect type
     if (lowerText.includes('รับ') || lowerText.includes('รายรับ')) {
       newFormData.type = 'income';
     } else if (lowerText.includes('จ่าย') || lowerText.includes('รายจ่าย')) {
       newFormData.type = 'expense';
     }
 
+    // Detect category
     for (const cat of categories) {
       if (lowerText.includes(cat.toLowerCase())) {
         newFormData.category = cat;
@@ -98,6 +105,7 @@ export default function AddTransaction() {
       }
     }
 
+    // Detect notes
     const notesMatch = lowerText.match(/(หมายเหตุ|สำหรับ)\s*([\s\S]*)/);
     if (notesMatch) {
       newFormData.notes = notesMatch[2].trim();
@@ -107,10 +115,12 @@ export default function AddTransaction() {
     setFormData(newFormData);
   };
 
+  // Handle image upload
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file type and size
     const validTypes = ['image/jpeg', 'image/png'];
     if (!validTypes.includes(file.type)) {
       setError('กรุณาอัปโหลดไฟล์รูปภาพ (.jpg, .png)');
@@ -125,10 +135,13 @@ export default function AddTransaction() {
     setOcrLoading(true);
     setOcrResult('');
 
+    // Perform OCR with Tesseract.js
     Tesseract.recognize(
       file,
-      'tha+eng',
-      { logger: (m) => console.log(m) }
+      'tha+eng', // Support Thai and English
+      {
+        logger: (m) => console.log(m), // Debug OCR progress
+      }
     ).then(({ data: { text } }) => {
       console.log('OCR result:', text);
       setOcrResult(text);
@@ -142,19 +155,26 @@ export default function AddTransaction() {
     });
   };
 
+  // Parse OCR text to form data
   const parseOcrText = (text) => {
     console.log('OCR text received:', text);
     const lowerText = text.toLowerCase();
     let parsedData = { ...formData };
 
+    // Detect amount (look for numbers followed by "บาท" or "฿")
     const amountMatch = lowerText.match(/(\d{1,3}(,\d{3})*(\.\d+)?)\s*(บาท|฿)/);
     if (amountMatch) {
       const rawAmount = amountMatch[1].replace(/,/g, '');
       parsedData.amount = rawAmount;
+      console.log('Parsed OCR amount:', rawAmount);
+    } else {
+      console.log('No matching amount found with currency');
     }
 
+    // Detect type (assume expense for receipts unless specified)
     parsedData.type = 'expense';
 
+    // Detect category
     for (const cat of categories) {
       if (lowerText.includes(cat.toLowerCase())) {
         parsedData.category = cat;
@@ -162,14 +182,16 @@ export default function AddTransaction() {
       }
     }
 
+    // Detect date (e.g., "15/08/2025", "15 สิงหาคม 2568")
     const dateMatch = lowerText.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/) || 
                      lowerText.match(/(\d{1,2})\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\s*(\d{4})/);
-    const timeMatch = lowerText.match(/(\d{1,2}):(\d{2})/);
     if (dateMatch) {
       let formattedDate;
       if (dateMatch[2].match(/\d{1,2}/)) {
+        // Format: DD/MM/YYYY or DD-MM-YYYY
         formattedDate = `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
       } else {
+        // Format: DD Month YYYY (Thai)
         const thaiMonths = {
           'มกราคม': '01', 'กุมภาพันธ์': '02', 'มีนาคม': '03', 'เมษายน': '04',
           'พฤษภาคม': '05', 'มิถุนายน': '06', 'กรกฎาคม': '07', 'สิงหาคม': '08',
@@ -178,17 +200,17 @@ export default function AddTransaction() {
         formattedDate = `${parseInt(dateMatch[3]) - 543}-${thaiMonths[dateMatch[2]]}-${dateMatch[1].padStart(2, '0')}`;
       }
       parsedData.date = formattedDate;
-      if (timeMatch && parseInt(timeMatch[1]) <= 23 && parseInt(timeMatch[2]) < 60) {
-        parsedData.time = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
-      }
+      console.log('Parsed OCR date:', formattedDate);
     }
 
+    // Detect notes (remaining text)
     parsedData.notes = text.split('\n').slice(0, 2).join(' ').trim();
 
     console.log('Parsed OCR formData:', parsedData);
     return parsedData;
   };
 
+  // Confirm OCR data
   const confirmOcrData = () => {
     setFormData(parsedData);
     setShowConfirmModal(false);
@@ -201,6 +223,7 @@ export default function AddTransaction() {
     setError('');
     setLoading(true);
 
+    // Validation
     if (!formData.amount || formData.amount <= 0) {
       setError('กรุณากรอกจำนวนเงินที่มากกว่า 0');
       setLoading(false);
@@ -224,23 +247,23 @@ export default function AddTransaction() {
         body: JSON.stringify({
           ...formData,
           amount: parseFloat(formData.amount),
-          date: new Date(`${formData.date}T${formData.time}:00.000+07:00`).toISOString(), // รวม date และ time
         }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Server error');
+      if (res.ok) {
+        window.location.href = '/dashboard';
+      } else {
+        setError(data.message || 'เกิดข้อผิดพลาดในการบันทึกธุรกรรม');
+        setLoading(false);
       }
-      window.location.href = '/dashboard';
     } catch (error) {
       setError('เกิดข้อผิดพลาด: ' + error.message);
-      console.error('Error details:', error);
       setLoading(false);
     }
   };
 
   if (!isLoggedIn) {
-    return null;
+    return null; // Show blank page while redirecting
   }
 
   return (
@@ -302,16 +325,6 @@ export default function AddTransaction() {
               type="date"
               value={formData.date}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">เวลา</label>
-            <input
-              type="time"
-              value={formData.time}
-              onChange={(e) => setFormData({ ...formData, time: e.target.value })}
               className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
@@ -388,6 +401,7 @@ export default function AddTransaction() {
           </div>
         </form>
 
+        {/* Confirmation Modal */}
         {showConfirmModal && parsedData && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-8 max-w-md mx-4 shadow-2xl">
@@ -397,7 +411,6 @@ export default function AddTransaction() {
                 <p><strong>ประเภท:</strong> {parsedData.type === 'income' ? 'รายรับ' : 'รายจ่าย'}</p>
                 <p><strong>หมวดหมู่:</strong> {parsedData.category}</p>
                 <p><strong>วันที่:</strong> {parsedData.date}</p>
-                <p><strong>เวลา:</strong> {parsedData.time || 'ไม่พบ'}</p>
                 <p><strong>หมายเหตุ:</strong> {parsedData.notes || 'ไม่พบ'}</p>
               </div>
               <div className="flex space-x-4 mt-6">
